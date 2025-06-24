@@ -4,6 +4,9 @@ import re
 from datetime import datetime
 from typing import List
 import requests
+import threading
+from http.server import HTTPServer, BaseHTTPRequestHandler
+
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.helpers import escape_markdown
 from telegram.ext import ApplicationBuilder, CommandHandler, CallbackContext, MessageHandler, filters, CallbackQueryHandler
@@ -108,7 +111,42 @@ async def process_shorts(update: Update, context: CallbackContext) -> None:
     )
 
     buttons = [
-    [
-        InlineKeyboardButton("🔁 Обновить ещё раз", callback_data='new_parse'),
+        [
+            InlineKeyboardButton("🔁 Обновить ещё раз", callback_data='new_parse'),
+        ]
     ]
-]
+
+    await reply.delete()
+    await message.reply_text(
+        report,
+        parse_mode='Markdown',
+        disable_web_page_preview=False,
+        reply_markup=InlineKeyboardMarkup(buttons)
+    )
+
+async def error_handler(update: object, context: CallbackContext) -> None:
+    logger.error("Ошибка:", exc_info=context.error)
+    if isinstance(update, Update) and update.message:
+        await update.message.reply_text("⚠️ Произошла ошибка. Попробуй ещё раз.")
+
+class SimpleHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b'Bot is running')
+
+def run_server():
+    server = HTTPServer(('0.0.0.0', 8000), SimpleHandler)
+    server.serve_forever()
+
+if __name__ == '__main__':
+    # Запускаем HTTP-сервер в отдельном потоке, чтобы Render не ругался на отсутствие открытого порта
+    threading.Thread(target=run_server, daemon=True).start()
+
+    # Запускаем Telegram бота
+    app = ApplicationBuilder().token(BOT_TOKEN).build()
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CallbackQueryHandler(new_parse_button, pattern='new_parse'))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, process_shorts))
+    app.add_error_handler(error_handler)
+    app.run_polling()
