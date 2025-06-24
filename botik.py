@@ -108,3 +108,7 @@ async def process_shorts(update: Update, context: CallbackContext) -> None:
     )
 
     buttons = [
+    [
+        InlineKeyboardButton("🔁 Обновить ещё раз", callback_data='new_parse'),
+    ]
+]
